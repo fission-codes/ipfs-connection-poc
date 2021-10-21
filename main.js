@@ -2,6 +2,14 @@ import { create } from 'ipfs-core'
 import Websockets from 'libp2p-websockets'
 import filters from 'libp2p-websockets/src/filters'
 
+
+/** Connection interval knobs
+ * 
+ * KEEP_ALIVE_INTERVAL: Interval to keep the connection alive when online
+ * BACKOFF_INIT: Starting intervals for fibonacci backoff used when establishing a connection
+ * KEEP_TRYING_INTERVAL: Interval to keep trying the connection when offline
+ */
+
 const KEEP_ALIVE_INTERVAL =
   1 * 60 * 1000 // 1 minute
 
@@ -11,8 +19,8 @@ const BACKOFF_INIT = {
   currentBackoff: 1000
 }
 
-const MAX_RETRIES =
-  17 // ~43 minutes
+const KEEP_TRYING_INTERVAL =
+  5 * 60 * 1000 // 5 minutes
 
 
 // IPFS OPTIONS
@@ -110,23 +118,24 @@ let latestTimeoutId = null;
 
 async function keepAlive(peer, backoff, status, report) {
   log('retry number', backoff.retryNumber)
+  log('currentBackoff', backoff.currentBackoff)
 
   let timeoutId = null;
 
-  if (backoff.retryNumber <= MAX_RETRIES) {
+  if (backoff.currentBackoff < KEEP_TRYING_INTERVAL) {
     log('backoff timeout', backoff.currentBackoff)
 
     // Start race between reconnect and ping
     timeoutId = setTimeout(() => reconnect(peer, backoff, status, report), backoff.currentBackoff)
-
-    // Track the latest reconnect attempt
-    latestTimeoutId = timeoutId;
   } else {
-    console.log('max connection attempts exceeded, giving up')
+    log('at retry ceiling, keep trying')
 
-    const updatedStatus = { ...status, connected: false, latency: null }
-    report(peer, updatedStatus)
+    // Disregard backoff, but keep trying
+    timeoutId = setTimeout(() => reconnect(peer, backoff, status, report), KEEP_TRYING_INTERVAL)
   }
+
+  // Track the latest reconnect attempt
+  latestTimeoutId = timeoutId;
 
   self.ipfs.libp2p.ping(peer).then(latency => {
     log('alive')
@@ -138,7 +147,6 @@ async function keepAlive(peer, backoff, status, report) {
     clearTimeout(timeoutId)
 
     // Keep alive after the latest ping-reconnect race, ignore the rest
-    // Give up if timeoutId is null, we are at max retries
     if (timeoutId === latestTimeoutId) {
       setTimeout(() => keepAlive(peer, BACKOFF_INIT, updatedStatus, report), KEEP_ALIVE_INTERVAL)
     }
@@ -146,7 +154,7 @@ async function keepAlive(peer, backoff, status, report) {
 
 }
 
-async function reconnect(peer, { retryNumber, lastBackoff, currentBackoff }, status, report) {
+async function reconnect(peer, backoff, status, report) {
   log('reconnecting')
 
   const updatedStatus = { ...status, connected: false, latency: null }
@@ -159,14 +167,17 @@ async function reconnect(peer, { retryNumber, lastBackoff, currentBackoff }, sta
     // No action needed, we will retry
   }
 
-  const backoff = {
-    retryNumber: retryNumber + 1,
-    lastBackoff: currentBackoff,
-    currentBackoff: lastBackoff + currentBackoff
-  }
+  if (backoff.currentBackoff < KEEP_TRYING_INTERVAL) {
+    const nextBackoff = {
+      retryNumber: backoff.retryNumber + 1,
+      lastBackoff: backoff.currentBackoff,
+      currentBackoff: backoff.lastBackoff + backoff.currentBackoff
+    }
 
-  // Keep alive or keep trying after this reconnect attempt
-  keepAlive(peer, backoff, updatedStatus, report)
+    keepAlive(peer, nextBackoff, updatedStatus, report)
+  } else {
+    keepAlive(peer, backoff, updatedStatus, report)
+  }
 }
 
 async function tryConnecting(peer, report) {
