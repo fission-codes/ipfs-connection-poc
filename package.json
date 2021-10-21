@@ -18,7 +18,6 @@
   },
   "devDependencies": {
     "ipfs": "^0.59.1",
-    "parcel": "^2.0.0",
-    "vite": "^2.6.10"
+    "parcel": "^2.0.0"
   }
 }
