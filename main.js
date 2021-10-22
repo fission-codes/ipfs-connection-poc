@@ -66,6 +66,12 @@ const main = async () => {
     throw new Error("💥 Couldn't start IPFS node, peer list is empty")
   };
 
+  // Track peer reconnect timeoutIds
+  self.latestPeerTimeoutIds = {}
+  peers.forEach(peer => {
+    self.latestPeerTimeoutIds[peer] = null
+  })
+
   const ipfs = await create(OPTIONS)
   self.ipfs = ipfs
 
@@ -114,8 +120,6 @@ function fetchPeers() {
 
 // CONNECTION
 
-let latestTimeoutId = null;
-
 async function keepAlive(peer, backoff, status, report) {
   log('retry number', backoff.retryNumber)
   log('currentBackoff', backoff.currentBackoff)
@@ -135,8 +139,8 @@ async function keepAlive(peer, backoff, status, report) {
   }
 
   // Track the latest reconnect attempt
-  latestTimeoutId = timeoutId;
-
+  self.latestPeerTimeoutIds[peer] = timeoutId
+  
   self.ipfs.libp2p.ping(peer).then(latency => {
     log('alive')
 
@@ -147,7 +151,7 @@ async function keepAlive(peer, backoff, status, report) {
     clearTimeout(timeoutId)
 
     // Keep alive after the latest ping-reconnect race, ignore the rest
-    if (timeoutId === latestTimeoutId) {
+    if (timeoutId === self.latestPeerTimeoutIds[peer]) {
       setTimeout(() => keepAlive(peer, BACKOFF_INIT, updatedStatus, report), KEEP_ALIVE_INTERVAL)
     }
   }).catch(() => { })
