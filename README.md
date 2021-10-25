@@ -36,4 +36,4 @@ Start the app with extra debug logging
 npm run dev:log
 ```
 
-Flaky connections can be simulated by stopping and restarting IPFS.
+Monitor connections in the browser developer tools. Flaky connections can be simulated by stopping and restarting IPFS or by going offline at the OS level.
