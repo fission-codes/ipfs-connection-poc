@@ -3,11 +3,12 @@ import Websockets from 'libp2p-websockets'
 import filters from 'libp2p-websockets/src/filters'
 
 
-/** Connection interval knobs
- * 
+/** 🎛️ Connection interval knobs
+ *
  * KEEP_ALIVE_INTERVAL: Interval to keep the connection alive when online
  * BACKOFF_INIT: Starting intervals for fibonacci backoff used when establishing a connection
  * KEEP_TRYING_INTERVAL: Interval to keep trying the connection when offline
+ * 
  */
 
 const KEEP_ALIVE_INTERVAL =
@@ -45,6 +46,7 @@ const OPTIONS = {
       peerDiscovery: { autoDial: false },
       transport: {
         [transportKey]: {
+          // Allow /ws/ peers for local testing
           filter: filters.all
         }
       }
@@ -103,6 +105,13 @@ const main = async () => {
   peers.forEach(peer => {
     tryConnecting(peer, report)
   })
+
+  // Try connecting when network comes online
+  self.addEventListener('online', () => {
+    peers.forEach(peer => {
+      tryConnecting(peer, report)
+    })
+  })
 }
 
 
@@ -140,7 +149,7 @@ async function keepAlive(peer, backoff, status, report) {
 
   // Track the latest reconnect attempt
   self.latestPeerTimeoutIds[peer] = timeoutId
-  
+
   self.ipfs.libp2p.ping(peer).then(latency => {
     log('alive')
 
