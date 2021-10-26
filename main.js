@@ -54,19 +54,21 @@ const OPTIONS = {
   }
 }
 
-
+let peers = Promise.resolve(
+  []
+)
 let peerConnections = []
 let latestPeerTimeoutIds = {}
 
 
 const main = async () => {
   // Local peers
-  const peers = [
+  peers = [
     // run `npm run ipfs` to determine local peers
   ]
 
   // Production peers
-  // const peers = await fetchPeers();
+  // peers = await fetchPeers();
 
   if (peers.length === 0) {
     throw new Error("💥 Couldn't start IPFS node, peer list is empty")
@@ -83,14 +85,14 @@ const main = async () => {
   peers.forEach(peer => {
     tryConnecting(peer)
   })
-
-  // Try connecting when network comes online
-  self.addEventListener('online', () => {
-    peers.forEach(peer => {
-      tryConnecting(peer)
-    })
-  })
 }
+
+// Try connecting when network comes online
+self.addEventListener('online', () => {
+  peers.forEach(peer => {
+    tryConnecting(peer)
+  })
+})
 
 
 // PEER LIST
