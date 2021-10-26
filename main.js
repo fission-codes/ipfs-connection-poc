@@ -55,7 +55,9 @@ const OPTIONS = {
 }
 
 
+let peerConnections = []
 let latestPeerTimeoutIds = {}
+
 
 const main = async () => {
   // Local peers
@@ -70,7 +72,7 @@ const main = async () => {
     throw new Error("💥 Couldn't start IPFS node, peer list is empty")
   };
 
-  // Track peer reconnect timeoutIds
+  // Initialize peer reconnect timeoutIds
   peers.forEach(peer => {
     latestPeerTimeoutIds[peer] = null
   })
@@ -78,39 +80,14 @@ const main = async () => {
   const ipfs = await create(OPTIONS)
   self.ipfs = ipfs
 
-  // Track the connections in a closure
-  let connections = []
-
-  const report = (peer, status) => {
-    connections = connections
-      .filter(connection => connection.peer !== peer)
-      .concat({ peer, ...status })
-
-    const offline = connections.every(connection => !connection.connected)
-    const lastConnectedAt = connections.reduce((newest, connection) =>
-      newest >= connection.lastConnectedAt ? newest : connection.lastConnectedAt,
-      0
-    )
-
-    const activeConnections = connections.filter(connection => connection.latency !== null)
-    const averageLatency = activeConnections.length > 0
-      ? connections.reduce((sum, connection) => sum + connection.latency, 0) / activeConnections.length
-      : null
-
-    console.table(connections)
-    log('offline', offline)
-    log('last connected at', lastConnectedAt === 0 ? null : lastConnectedAt)
-    log('average latency', averageLatency)
-  }
-
   peers.forEach(peer => {
-    tryConnecting(peer, report)
+    tryConnecting(peer)
   })
 
   // Try connecting when network comes online
   self.addEventListener('online', () => {
     peers.forEach(peer => {
-      tryConnecting(peer, report)
+      tryConnecting(peer)
     })
   })
 }
@@ -130,7 +107,7 @@ function fetchPeers() {
 
 // CONNECTION
 
-async function keepAlive(peer, backoff, status, report) {
+async function keepAlive(peer, backoff, status) {
   log('retry number', backoff.retryNumber)
   log('currentBackoff', backoff.currentBackoff)
 
@@ -140,12 +117,12 @@ async function keepAlive(peer, backoff, status, report) {
     log('backoff timeout', backoff.currentBackoff)
 
     // Start race between reconnect and ping
-    timeoutId = setTimeout(() => reconnect(peer, backoff, status, report), backoff.currentBackoff)
+    timeoutId = setTimeout(() => reconnect(peer, backoff, status), backoff.currentBackoff)
   } else {
     log('at retry ceiling, keep trying')
 
     // Disregard backoff, but keep trying
-    timeoutId = setTimeout(() => reconnect(peer, backoff, status, report), KEEP_TRYING_INTERVAL)
+    timeoutId = setTimeout(() => reconnect(peer, backoff, status), KEEP_TRYING_INTERVAL)
   }
 
   // Track the latest reconnect attempt
@@ -162,13 +139,13 @@ async function keepAlive(peer, backoff, status, report) {
 
     // Keep alive after the latest ping-reconnect race, ignore the rest
     if (timeoutId === latestPeerTimeoutIds[peer]) {
-      setTimeout(() => keepAlive(peer, BACKOFF_INIT, updatedStatus, report), KEEP_ALIVE_INTERVAL)
+      setTimeout(() => keepAlive(peer, BACKOFF_INIT, updatedStatus), KEEP_ALIVE_INTERVAL)
     }
   }).catch(() => { })
 
 }
 
-async function reconnect(peer, backoff, status, report) {
+async function reconnect(peer, backoff, status) {
   log('reconnecting')
 
   const updatedStatus = { ...status, connected: false, latency: null }
@@ -188,13 +165,13 @@ async function reconnect(peer, backoff, status, report) {
       currentBackoff: backoff.lastBackoff + backoff.currentBackoff
     }
 
-    keepAlive(peer, nextBackoff, updatedStatus, report)
+    keepAlive(peer, nextBackoff, updatedStatus)
   } else {
-    keepAlive(peer, backoff, updatedStatus, report)
+    keepAlive(peer, backoff, updatedStatus)
   }
 }
 
-async function tryConnecting(peer, report) {
+async function tryConnecting(peer) {
   self
     .ipfs.libp2p.ping(peer)
     .then(latency => {
@@ -211,7 +188,7 @@ async function tryConnecting(peer, report) {
           // TODO: This is a temporary solution while we wait for
           //       https://github.com/libp2p/js-libp2p/issues/744
           //       (see "Keep alive" bit)
-          setTimeout(() => keepAlive(peer, BACKOFF_INIT, status, report), KEEP_ALIVE_INTERVAL)
+          setTimeout(() => keepAlive(peer, BACKOFF_INIT, status), KEEP_ALIVE_INTERVAL)
         })
     })
     .catch(() => {
@@ -220,8 +197,33 @@ async function tryConnecting(peer, report) {
       const status = { connected: false, lastConnectedAt: 0, latency: null }
       report(peer, status)
 
-      keepAlive(peer, BACKOFF_INIT, status, report)
+      keepAlive(peer, BACKOFF_INIT, status)
     })
+}
+
+
+// REPORTING
+
+function report(peer, status) {
+  peerConnections = peerConnections
+    .filter(connection => connection.peer !== peer)
+    .concat({ peer, ...status })
+
+  const offline = peerConnections.every(connection => !connection.connected)
+  const lastConnectedAt = peerConnections.reduce((newest, connection) =>
+    newest >= connection.lastConnectedAt ? newest : connection.lastConnectedAt,
+    0
+  )
+
+  const activeConnections = peerConnections.filter(connection => connection.latency !== null)
+  const averageLatency = activeConnections.length > 0
+    ? peerConnections.reduce((sum, connection) => sum + connection.latency, 0) / activeConnections.length
+    : null
+
+  console.table(peerConnections)
+  console.log('offline', offline)
+  console.log('last connected at', lastConnectedAt === 0 ? null : lastConnectedAt)
+  console.log('average latency', averageLatency)
 }
 
 
