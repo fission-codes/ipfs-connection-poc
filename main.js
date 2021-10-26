@@ -55,6 +55,8 @@ const OPTIONS = {
 }
 
 
+let latestPeerTimeoutIds = {}
+
 const main = async () => {
   // Local peers
   const peers = [
@@ -69,9 +71,8 @@ const main = async () => {
   };
 
   // Track peer reconnect timeoutIds
-  self.latestPeerTimeoutIds = {}
   peers.forEach(peer => {
-    self.latestPeerTimeoutIds[peer] = null
+    latestPeerTimeoutIds[peer] = null
   })
 
   const ipfs = await create(OPTIONS)
@@ -148,7 +149,7 @@ async function keepAlive(peer, backoff, status, report) {
   }
 
   // Track the latest reconnect attempt
-  self.latestPeerTimeoutIds[peer] = timeoutId
+  latestPeerTimeoutIds[peer] = timeoutId
 
   self.ipfs.libp2p.ping(peer).then(latency => {
     log('alive')
@@ -160,7 +161,7 @@ async function keepAlive(peer, backoff, status, report) {
     clearTimeout(timeoutId)
 
     // Keep alive after the latest ping-reconnect race, ignore the rest
-    if (timeoutId === self.latestPeerTimeoutIds[peer]) {
+    if (timeoutId === latestPeerTimeoutIds[peer]) {
       setTimeout(() => keepAlive(peer, BACKOFF_INIT, updatedStatus, report), KEEP_ALIVE_INTERVAL)
     }
   }).catch(() => { })
