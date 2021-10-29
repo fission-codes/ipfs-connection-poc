@@ -89,9 +89,15 @@ const main = async () => {
 
 // Try connecting when network comes online
 self.addEventListener('online', () => {
-  peers.forEach(peer => {
-    tryConnecting(peer)
-  })
+  peers
+    .filter(peer =>
+      !peer.includes("/localhost/") &&
+      !peer.includes("/127.0.0.1/") &&
+      !peer.includes("/0.0.0.0/")
+    )
+    .forEach(peer => {
+      tryConnecting(peer)
+    })
 })
 
 
